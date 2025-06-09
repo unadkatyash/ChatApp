@@ -1,11 +1,13 @@
 ﻿using ChatApp.IServices;
 using ChatApp.Models;
 using ChatApp.Models.ViewModels;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 
 namespace ChatApp.Controllers
 {
+    [AllowAnonymous]
     public class AccountController : Controller
     {
         private readonly UserManager<ApplicationUser> _userManager;
@@ -51,9 +53,9 @@ namespace ChatApp.Controllers
                 Response.Cookies.Append("jwt", token, new CookieOptions
                 {
                     HttpOnly = true,
-                    Secure = true,
+                    Secure = false,
                     SameSite = SameSiteMode.Strict,
-                    Expires = DateTime.UtcNow.AddHours(24)
+                    Expires = DateTime.Now.AddMinutes(30)
                 });
 
                 return RedirectToAction("Index", "Chat");
@@ -95,9 +97,9 @@ namespace ChatApp.Controllers
                 Response.Cookies.Append("jwt", token, new CookieOptions
                 {
                     HttpOnly = true,
-                    Secure = true,
+                    Secure = false,
                     SameSite = SameSiteMode.Strict,
-                    Expires = DateTime.UtcNow.AddHours(24)
+                    Expires = DateTime.Now.AddMinutes(30)
                 });
 
                 return RedirectToAction("Index", "Chat");

@@ -37,7 +37,7 @@ namespace ChatApp.Hubs
                 SenderName = displayName,
                 Message = message,
                 RoomId = roomId,
-                Timestamp = DateTime.UtcNow
+                Timestamp = DateTime.Now
             };
 
             _context.ChatMessages.Add(chatMessage);
@@ -73,7 +73,7 @@ namespace ChatApp.Hubs
                 if (user != null)
                 {
                     user.IsOnline = true;
-                    user.LastSeen = DateTime.UtcNow;
+                    user.LastSeen = DateTime.Now;
                     await _context.SaveChangesAsync();
                 }
             }
@@ -91,11 +91,12 @@ namespace ChatApp.Hubs
                 if (user != null)
                 {
                     user.IsOnline = false;
-                    user.LastSeen = DateTime.UtcNow;
+                    user.LastSeen = DateTime.Now;
                     await _context.SaveChangesAsync();
                 }
             }
 
+            await LeaveRoom("general");
             await base.OnDisconnectedAsync(exception);
         }
     }

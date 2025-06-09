@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ChatApp.Controllers
 {
-    //[Authorize]
+    [Authorize]
     public class ChatController : Controller
     {
         private readonly ApplicationDbContext _context;
@@ -32,12 +32,13 @@ namespace ChatApp.Controllers
         public async Task<IActionResult> GetOnlineUsers()
         {
             var users = await _context.Users
-                .Where(u => u.IsOnline)
                 .Select(u => new
                 {
                     u.UserName,
                     u.FirstName,
-                    u.LastName
+                    u.LastName,
+                    u.LastSeen,
+                    u.IsOnline
                 })
                 .ToListAsync();
 
