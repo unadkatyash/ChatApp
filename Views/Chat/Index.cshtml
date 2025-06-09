@@ -1,0 +1,237 @@
+﻿@model IEnumerable<ChatApp.Models.ChatMessage>
+@{
+    ViewData["Title"] = "Chat Room";
+    var currentRoom = ViewBag.Room as string ?? "general";
+}
+
+<div class="row">
+    <div class="col-md-9">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Chat Room: @currentRoom.ToUpper()</h5>
+                <span id="connectionStatus" class="badge bg-secondary">Connecting...</span>
+            </div>
+            <div class="card-body">
+                <div id="messagesList" class="chat-container">
+                    @{
+                        var fullName = User.FindFirst("FirstName")?.Value + " " + User.FindFirst("LastName")?.Value;
+                    }
+
+                    @foreach (var message in Model)
+                    {
+                        var isOwnMessage = message.SenderName == fullName;
+                        <div class="message @(isOwnMessage ? "own" : "other")">
+                            <div class="message-header">
+                                <strong>@message.SenderName</strong> - @message.Timestamp.ToString("HH:mm")
+                            </div>
+                            <div>@message.Message</div>
+                        </div>
+                    }
+                </div>
+
+                <div class="input-group">
+                    <input type="text" id="messageInput" class="form-control" placeholder="Type your message..." maxlength="1000" />
+                    <button class="btn btn-primary" type="button" id="sendButton">Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">Online Users</h6>
+            </div>
+            <div class="card-body">
+                <div id="usersList" class="online-users">
+                    <div class="text-muted">Loading users...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        "use strict";
+
+        let connection;
+        let currentUser = '@User.Identity.Name';
+        let currentUserFullName = '@(User.FindFirst("FirstName")?.Value + " " + User.FindFirst("LastName")?.Value)';
+        loadOnlineUsers();
+        setInterval(loadOnlineUsers, 5000);
+
+        // Get JWT token from cookie
+        async function getToken() {
+            try {
+                const response = await fetch('/Chat/GetToken');
+                // console.log(response);
+                const data = await response.json();
+                return data.token;
+            } catch (error) {
+                console.error('Error getting token:', error);
+                return null;
+            }
+        }
+
+        // Initialize SignalR connection
+        async function initializeConnection() {
+            const token = await getToken();
+
+            if (!token) {
+                console.error('No token available');
+                document.getElementById('connectionStatus').textContent = 'Authentication Error';
+                document.getElementById('connectionStatus').className = 'badge bg-danger';
+                return;
+            }
+
+            connection = new signalR.HubConnectionBuilder()
+                .withUrl("/chatHub", {
+                    accessTokenFactory: () => token
+                })
+                .build();
+
+            // Handle incoming messages
+            connection.on("ReceiveMessage", function (sender, message, time) {
+                addMessageToChat(sender, message, time, sender === currentUserFullName);
+            });
+
+            // Handle user joined
+            connection.on("UserJoined", function (userName, user) {
+                if (user !== currentUser) {
+                    addSystemMessage(userName + " joined the chat");
+                }
+            });
+
+            // Handle user left
+            connection.on("UserLeft", function (userName, user) {
+                if (user !== currentUser) {
+                    addSystemMessage(userName + " left the chat");
+                }
+            });
+
+            // Start connection
+            try {
+                await connection.start();
+                document.getElementById('connectionStatus').textContent = 'Connected';
+                document.getElementById('connectionStatus').className = 'badge bg-success';
+
+                // Join the room
+                await connection.invoke("JoinRoom", "@ViewBag.Room");
+
+            } catch (err) {
+                console.error('SignalR Connection Error: ', err);
+                document.getElementById('connectionStatus').textContent = 'Connection Failed';
+                document.getElementById('connectionStatus').className = 'badge bg-danger';
+            }
+        }
+
+        // Add message to chat
+        function addMessageToChat(sender, message, time, isOwnMessage) {
+            const messagesList = document.getElementById("messagesList");
+            const messageDiv = document.createElement("div");
+            messageDiv.className = `message ${isOwnMessage ? 'own' : 'other'}`;
+
+            messageDiv.innerHTML = `
+                        <div class="message-header">
+                            <strong>${sender}</strong> - ${time}
+                        </div>
+                        <div>${escapeHtml(message)}</div>
+                    `;
+
+            messagesList.appendChild(messageDiv);
+            messagesList.scrollTop = messagesList.scrollHeight;
+        }
+
+        // Add system message
+        function addSystemMessage(message) {
+            const messagesList = document.getElementById("messagesList");
+            const messageDiv = document.createElement("div");
+            messageDiv.className = "text-center text-muted small mb-2";
+            messageDiv.textContent = message;
+
+            messagesList.appendChild(messageDiv);
+            messagesList.scrollTop = messagesList.scrollHeight;
+        }
+
+        // Escape HTML to prevent XSS
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Send message
+        async function sendMessage() {
+            const messageInput = document.getElementById("messageInput");
+            const message = messageInput.value.trim();
+
+            if (message && connection) {
+                try {
+                    await connection.invoke("SendMessage", message, "@ViewBag.Room");
+                    messageInput.value = "";
+                } catch (err) {
+                    console.error('Send Message Error: ', err);
+                    alert('Failed to send message. Please try again.');
+                }
+            }
+        }
+
+        // Event listeners
+        document.getElementById("sendButton").addEventListener("click", sendMessage);
+
+        document.getElementById("messageInput").addEventListener("keypress", function (e) {
+            if (e.key === "Enter") {
+                sendMessage();
+            }
+        });
+
+        // Initialize connection when page loads
+        document.addEventListener("DOMContentLoaded", function () {
+            initializeConnection();
+        });
+
+        // Handle page unload
+        window.addEventListener("beforeunload", function () {
+            if (connection) {
+                connection.stop();
+            }
+        });
+
+        async function loadOnlineUsers() {
+            try {
+                const response = await fetch('/Chat/GetOnlineUsers');
+                const users = await response.json();
+
+                const usersList = document.getElementById("usersList");
+                usersList.innerHTML = "";
+
+                if (users.length === 0) {
+                    usersList.innerHTML = "<div class='text-muted'>No users online.</div>";
+                    return;
+                }
+
+                // Sort: place the current user at the top
+                users.sort((a, b) => {
+                    if (a.userName === currentUser) return -1;
+                    if (b.userName === currentUser) return 1;
+                    return 0;
+                });
+
+                users.forEach(user => {
+                    const div = document.createElement("div");
+                    div.classList.add("user-item");
+                    if (user.userName === currentUser) {
+                        div.innerHTML = `<span class="text-success me-1">●</span> <strong>You (${user.firstName} ${user.lastName})</strong>`;
+                    } else {
+                        div.innerHTML = `<span class="text-success me-1">●</span> ${user.firstName} ${user.lastName}`;
+                    }
+                    usersList.appendChild(div);
+                });
+            } catch (err) {
+                console.error("Failed to load users", err);
+            }
+        }
+
+    </script>
+}
