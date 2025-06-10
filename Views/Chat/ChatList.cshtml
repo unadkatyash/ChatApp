@@ -1,0 +1,320 @@
+﻿@model ChatApp.Models.ViewModels.ChatListViewModel
+@{
+    ViewData["Title"] = "Chat List";
+}
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Your Conversations</h5>
+                <div>
+                    <span id="connectionStatus" class="badge bg-secondary">Connecting...</span>
+                    <span id="unreadBadge" class="badge bg-danger ms-2" style="display: none;">0</span>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <!-- Users List -->
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <h6 class="mb-0">Contacts</h6>
+                            </div>
+                            <div class="card-body p-0">
+                                <div class="list-group list-group-flush">
+                                    <!-- General Group Chat -->
+                                    <a href="@Url.Action("Index", "Chat")" class="list-group-item list-group-item-action">
+                                        <div class="d-flex w-100 justify-content-between">
+                                            <h6 class="mb-1">📢 General Chat</h6>
+                                            <small id="groupUnreadCount" class="badge bg-primary rounded-pill" style="display: none;">0</small>
+                                        </div>
+                                        <p class="mb-1 text-muted">Group conversation</p>
+                                        <small class="text-muted">
+                                            @if (Model.GroupMessages.Any())
+                                            {
+                                                @Model.GroupMessages.First().Timestamp.ToString("MMM dd, HH:mm")
+                                            }
+                                        </small>
+                                    </a>
+
+                                    <!-- Private Chats -->
+                                    @foreach (var user in Model.Users)
+                                    {
+                                        <a href="@Url.Action("PrivateChat", "Chat", new { userId = user.UserId })"
+                                           class="list-group-item list-group-item-action user-chat-item" data-user-id="@user.UserId">
+                                            <div class="d-flex w-100 justify-content-between">
+                                                <div class="d-flex align-items-center">
+                                                    <div class="position-relative me-2">
+                                                        <span class="@(user.IsOnline ? "text-success" : "text-muted")">●</span>
+                                                    </div>
+                                                    <h6 class="mb-1">@user.FullName</h6>
+                                                </div>
+                                                @if (user.UnreadCount > 0)
+                                                {
+                                                    <small class="badge bg-danger rounded-pill unread-count">@user.UnreadCount</small>
+                                                }
+                                            </div>
+                                            @if (!string.IsNullOrEmpty(user.LastMessage))
+                                            {
+                                                <p class="mb-1 text-muted last-message">@user.LastMessage</p>
+                                                <small class="text-muted">@(user.LastMessageTime?.ToString("MMM dd, HH:mm") ?? "")</small>
+                                            }
+                                            else
+                                            {
+                                                <p class="mb-1 text-muted">No messages yet</p>
+                                                <small class="text-muted">
+                                                    @if (user.IsOnline)
+                                                    {
+                                                        <span class="text-success">Online</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span>Last seen: @user.LastSeen.ToString("MMM dd, HH:mm")</span>
+                                                    }
+                                                </small>
+                                            }
+                                        </a>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Recent Group Messages -->
+                    <div class="col-md-8">
+                        <div class="card">
+                            <div class="card-header">
+                                <h6 class="mb-0">Recent Activity - General Chat</h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="recent-messages">
+                                    @if (Model.GroupMessages.Any())
+                                    {
+                                        @foreach (var message in Model.GroupMessages.Take(5))
+                                        {
+                                            <div class="message-preview mb-3 p-2 border-bottom">
+                                                <div class="d-flex justify-content-between">
+                                                    <strong>@message.SenderName</strong>
+                                                    <small class="text-muted">@message.Timestamp.ToString("MMM dd, HH:mm")</small>
+                                                </div>
+                                                <p class="mb-0 text-muted">@message.Message</p>
+                                            </div>
+                                        }
+                                        <div class="text-center">
+                                            <a href="@Url.Action("Index", "Chat")" class="btn btn-outline-primary btn-sm">
+                                                Join General Chat
+                                            </a>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="text-center text-muted">
+                                            <p>No recent messages in general chat</p>
+                                            <a href="@Url.Action("Index", "Chat")" class="btn btn-primary">
+                                                Start Chatting
+                                            </a>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        "use strict";
+
+        let connection;
+        let currentUser = '@User?.Identity?.Name';
+        let currentUserId = '@User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value';
+
+        // Get JWT token from cookie
+        async function getToken() {
+            try {
+                const response = await fetch('/Chat/GetToken');
+                const data = await response.json();
+                return data.token;
+            } catch (error) {
+                console.error('Error getting token:', error);
+                return null;
+            }
+        }
+
+        // Initialize SignalR connection
+        async function initializeConnection() {
+            const token = await getToken();
+
+            if (!token) {
+                console.error('No token available');
+                document.getElementById('connectionStatus').textContent = 'Authentication Error';
+                document.getElementById('connectionStatus').className = 'badge bg-danger';
+                return;
+            }
+
+            connection = new signalR.HubConnectionBuilder()
+                .withUrl("/chatHub", {
+                    accessTokenFactory: () => token
+                })
+                .build();
+
+            // Handle incoming private messages
+            connection.on("ReceivePrivateMessage", function (senderId, senderName, message, time, messageId) {
+                updateChatList(senderId, senderName, message, time);
+                updateUnreadCount();
+                showNotification(senderName, message);
+            });
+
+            // Handle unread message counts
+            connection.on("UnreadMessageCount", function (groupUnreadCount, privateUnreadCount) {
+                updateUnreadBadges(groupUnreadCount, privateUnreadCount);
+            });
+
+            // Handle new group messages
+            connection.on("ReceiveMessage", function (sender, message, time, messageId, senderId) {
+                if (senderId !== currentUserId) {
+                    updateUnreadCount();
+                    showNotification(sender, message, true);
+                }
+            });
+
+            // Start connection
+            try {
+                await connection.start();
+                document.getElementById('connectionStatus').textContent = 'Connected';
+                document.getElementById('connectionStatus').className = 'badge bg-success';
+
+                // Get initial unread counts
+                await connection.invoke("GetUnreadMessageCount");
+
+            } catch (err) {
+                console.error('SignalR Connection Error: ', err);
+                document.getElementById('connectionStatus').textContent = 'Connection Failed';
+                document.getElementById('connectionStatus').className = 'badge bg-danger';
+            }
+        }
+
+        // Update chat list with new message
+        function updateChatList(senderId, senderName, message, time) {
+            const userChatItem = document.querySelector(`[data-user-id="${senderId}"]`);
+            if (userChatItem) {
+                // Update last message
+                const lastMessageElement = userChatItem.querySelector('.last-message');
+                if (lastMessageElement) {
+                    lastMessageElement.textContent = message.length > 50 ? message.substring(0, 50) + '...' : message;
+                }
+
+                // Update unread count
+                let unreadElement = userChatItem.querySelector('.unread-count');
+                if (!unreadElement) {
+                    const unreadBadge = document.createElement('small');
+                    unreadBadge.className = 'badge bg-danger rounded-pill unread-count';
+                    unreadBadge.textContent = '1';
+                    userChatItem.querySelector('.d-flex.w-100.justify-content-between').appendChild(unreadBadge);
+                } else {
+                    const currentCount = parseInt(unreadElement.textContent) || 0;
+                    unreadElement.textContent = currentCount + 1;
+                }
+
+                // Move to top
+                const parent = userChatItem.parentElement;
+                parent.insertBefore(userChatItem, parent.children[1]); // After general chat
+            }
+        }
+
+        // Update unread badges
+        function updateUnreadBadges(groupUnreadCount, privateUnreadCount) {
+            const totalUnread = groupUnreadCount + privateUnreadCount;
+            const unreadBadge = document.getElementById('unreadBadge');
+            const groupUnreadElement = document.getElementById('groupUnreadCount');
+
+            if (totalUnread > 0) {
+                unreadBadge.textContent = totalUnread;
+                unreadBadge.style.display = 'inline';
+            } else {
+                unreadBadge.style.display = 'none';
+            }
+
+            if (groupUnreadCount > 0) {
+                groupUnreadElement.textContent = groupUnreadCount;
+                groupUnreadElement.style.display = 'inline';
+            } else {
+                groupUnreadElement.style.display = 'none';
+            }
+        }
+
+        // Update unread count
+        async function updateUnreadCount() {
+            if (connection) {
+                try {
+                    await connection.invoke("GetUnreadMessageCount");
+                } catch (err) {
+                    console.error('Error getting unread count:', err);
+                }
+            }
+        }
+
+        // Show browser notification
+        function showNotification(senderName, message, isGroup = false) {
+            if ('Notification' in window && Notification.permission === 'granted') {
+                const title = isGroup ? `New message in General Chat` : `New message from ${senderName}`;
+                const options = {
+                    body: message.length > 100 ? message.substring(0, 100) + '...' : message,
+                    icon: '/favicon.ico',
+                    badge: '/favicon.ico',
+                    tag: isGroup ? 'group' : senderName
+                };
+
+                const notification = new Notification(title, options);
+
+                notification.onclick = function () {
+                    window.focus();
+                    if (isGroup) {
+                        window.location.href = '/Chat/Index';
+                    } else {
+                        // Find user ID from the sender name (you might need to store this mapping)
+                        const userChatItem = Array.from(document.querySelectorAll('.user-chat-item')).find(item =>
+                            item.textContent.includes(senderName)
+                        );
+                        if (userChatItem) {
+                            const userId = userChatItem.getAttribute('data-user-id');
+                            window.location.href = `/Chat/PrivateChat?userId=${userId}`;
+                        }
+                    }
+                    notification.close();
+                };
+
+                // Auto close after 5 seconds
+                setTimeout(() => notification.close(), 5000);
+            }
+        }
+
+        // Request notification permission
+        function requestNotificationPermission() {
+            if ('Notification' in window && Notification.permission === 'default') {
+                Notification.requestPermission();
+            }
+        }
+
+        // Initialize when page loads
+        document.addEventListener("DOMContentLoaded", function () {
+            initializeConnection();
+            requestNotificationPermission();
+
+            // Refresh unread counts every 30 seconds
+            setInterval(updateUnreadCount, 30000);
+        });
+
+        // Handle page unload
+        window.addEventListener("beforeunload", function () {
+            if (connection) {
+                connection.stop();
+            }
+        });
+    </script>
+}
