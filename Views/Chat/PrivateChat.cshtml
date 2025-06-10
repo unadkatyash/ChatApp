@@ -29,20 +29,20 @@
                     {
                         var isOwnMessage = message.SenderId == currentUserId;
                         <div class="message @(isOwnMessage ? "own" : "other")" data-message-id="@message.Id">
-                            <div class="message-header">
+                            @* <div class="message-header">
                                 <strong>@(isOwnMessage ? "You" : Model.ReceiverName)</strong> - @message.Timestamp.ToString("HH:mm")
-                            </div>
+                            </div> *@
                             <div class="message-content">@message.Message</div>
                             @if (isOwnMessage)
                             {
                                 <div class="message-status">
                                     @if (message.IsRead)
                                     {
-                                        <small class="text-success">✓✓ Seen @message.ReadAt?.ToString("HH:mm")</small>
+                                        <small class="chat-status">✓✓✓ Seen @message.ReadAt?.ToString("HH:mm")</small>
                                     }
                                     else
                                     {
-                                        <small class="text-muted">✓ Sent</small>
+                                        <small class="chat-status">✓ Sent @message.Timestamp.ToString("HH:mm")</small>
                                     }
                                 </div>
                             }
@@ -78,7 +78,7 @@
                             }
                             else if (isReceiver)
                             {
-                                <strong>@user.FirstName @user.LastName (Current Chat)</strong>
+                                <strong>@user.FirstName @user.LastName</strong>
                             }
                             else
                             {
@@ -113,7 +113,6 @@
         let receiverName = '@Model.ReceiverName';
         let currentUserName = '@currentUserName';
 
-        // Get JWT token from cookie
         async function getToken() {
             try {
                 const response = await fetch('/Chat/GetToken');
@@ -125,7 +124,6 @@
             }
         }
 
-        // Initialize SignalR connection
         async function initializeConnection() {
             const token = await getToken();
 
@@ -142,39 +140,32 @@
                 })
                 .build();
 
-            // Handle incoming private messages
             connection.on("ReceivePrivateMessage", function (senderId, senderName, message, time, messageId) {
                 if (senderId === receiverId) {
                     addMessageToChat(senderName, message, time, false, messageId);
-                    // Mark message as read
                     markMessageAsRead(messageId, 'private');
                 }
             });
 
-            // Handle sent private messages
             connection.on("PrivateMessageSent", function (toReceiverId, message, time, messageId) {
                 if (toReceiverId === receiverId) {
                     addMessageToChat("You", message, time, true, messageId);
                 }
             });
 
-            // Handle message read notifications
             connection.on("MessageRead", function (messageId, messageType) {
                 if (messageType === 'private') {
                     updateMessageStatus(messageId, true);
                 }
             });
 
-            // Start connection
             try {
                 await connection.start();
                 document.getElementById('connectionStatus').textContent = 'Connected';
                 document.getElementById('connectionStatus').className = 'badge bg-success';
 
-                // Mark existing unread messages as read
                 await markMessagesAsRead();
 
-                // Update user status
                 updateUserStatus();
 
             } catch (err) {
@@ -184,7 +175,6 @@
             }
         }
 
-        // Add message to chat
         function addMessageToChat(sender, message, time, isOwnMessage, messageId) {
             const messagesList = document.getElementById("messagesList");
             const messageDiv = document.createElement("div");
@@ -192,7 +182,7 @@
             messageDiv.setAttribute('data-message-id', messageId);
 
             const statusHtml = isOwnMessage ?
-                '<div class="message-status"><small class="text-muted">✓ Sent</small></div>' : '';
+                '<div class="message-status"><small class="chat-status">✓ Sent</small></div>' : '';
 
             messageDiv.innerHTML = `
                         <div class="message-header">
@@ -206,19 +196,17 @@
             messagesList.scrollTop = messagesList.scrollHeight;
         }
 
-        // Update message status (seen/read)
         function updateMessageStatus(messageId, isRead) {
             const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
             if (messageElement && messageElement.classList.contains('own')) {
                 const statusElement = messageElement.querySelector('.message-status small');
                 if (statusElement && isRead) {
-                    statusElement.innerHTML = '✓✓ Seen';
-                    statusElement.className = 'text-success';
+                    statusElement.innerHTML = '✓✓✓ Seen';
+                    statusElement.className = 'chat-status';
                 }
             }
         }
 
-        // Mark message as read
         async function markMessageAsRead(messageId, messageType) {
             if (connection) {
                 try {
@@ -379,5 +367,10 @@
     .online-users {
         height: 70vh;
         overflow-y: auto;
+    }
+
+    .chat-status {
+        color: white !important;
+        opacity: 1;
     }
 </style>

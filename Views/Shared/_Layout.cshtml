@@ -6,6 +6,7 @@
     <title>@ViewData["Title"] - Chat App</title>
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="icon" type="image/png" href="~/favicon.ico" />
     <style>
         .chat-container {
             height: 70vh;
@@ -13,12 +14,15 @@
             border: 1px solid #ddd;
             padding: 15px;
             background-color: #f8f9fa;
+            scroll-behavior: smooth;
         }
         .message {
-            margin-bottom: 10px;
-            padding: 8px 12px;
-            border-radius: 10px;
+            margin-bottom: 15px;
+            padding: 10px 15px;
+            border-radius: 18px;
             max-width: 70%;
+            position: relative;
+            word-wrap: break-word;
         }
         .message.own {
             background-color: #007bff;
@@ -32,8 +36,15 @@
         }
         .message-header {
             font-size: 0.8em;
-            opacity: 0.7;
-            margin-bottom: 3px;
+            opacity: 0.8;
+            margin-bottom: 5px;
+        }
+        .message-content {
+            margin-bottom: 5px;
+        }
+        .message-status {
+            font-size: 0.7em;
+            opacity: 0.8;
         }
         .input-group {
             margin-top: 15px;
@@ -46,13 +57,78 @@
             height: 70vh;
             overflow-y: auto;
         }
+        .user-item {
+            padding: 10px;
+            margin-bottom: 5px;
+            border-radius: 8px;
+            transition: background-color 0.2s;
+        }
+        .user-item:hover {
+            background-color: #e9ecef;
+        }
+        .user-item.offline {
+            opacity: 0.6;
+        }
+        .user-item.current-chat {
+            background-color: #e3f2fd;
+            border: 1px solid #2196f3;
+        }
+        .notification-toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            min-width: 300px;
+            opacity: 0;
+            transform: translateX(100%);
+            transition: all 0.3s ease;
+        }
+        .notification-toast.show {
+            opacity: 1;
+            transform: translateX(0);
+        }
+        .typing-indicator {
+            font-style: italic;
+            color: #6c757d;
+            font-size: 0.9em;
+            padding: 5px 0;
+        }
+        .unread-badge {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+        }
+        .chat-list-item {
+            position: relative;
+            transition: background-color 0.2s;
+        }
+        .chat-list-item:hover {
+            background-color: #f8f9fa;
+        }
+        .last-message {
+            font-size: 0.9em;
+            color: #6c757d;
+        }
+        .message-time {
+            font-size: 0.8em;
+            color: #6c757d;
+        }
+        .connection-status {
+            font-size: 0.8em;
+        }
+        .navbar-unread-badge {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            font-size: 0.7em;
+        }
     </style>
 </head>
 <body>
     <header>
         <nav class="navbar navbar-expand-sm navbar-toggleable-sm navbar-light bg-white border-bottom box-shadow mb-3">
             <div class="container-fluid">
-                <a class="navbar-brand" asp-area="" asp-controller="Home" asp-action="Index">Chat App</a>
+                <a class="navbar-brand" asp-controller="Chat" asp-action="ChatList">💬 Chat App</a>
                 <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target=".navbar-collapse">
                     <span class="navbar-toggler-icon"></span>
                 </button>
@@ -60,8 +136,14 @@
                     <ul class="navbar-nav flex-grow-1">
                         @if (User.Identity.IsAuthenticated)
                         {
+                            <li class="nav-item position-relative">
+                                <a class="nav-link text-dark" asp-controller="Chat" asp-action="ChatList">
+                                    📋 Chat List
+                                    <span id="navbarUnreadBadge" class="badge bg-danger navbar-unread-badge" style="display: none;">0</span>
+                                </a>
+                            </li>
                             <li class="nav-item">
-                                <a class="nav-link text-dark" asp-controller="Chat" asp-action="Index">Chat</a>
+                                <a class="nav-link text-dark" asp-controller="Chat" asp-action="Index">💬 General Chat</a>
                             </li>
                         }
                     </ul>
@@ -69,21 +151,24 @@
                         @if (User.Identity.IsAuthenticated)
                         {
                             <li class="nav-item">
-                                <span class="navbar-text">Hello, @User?.FindFirst("FirstName")?.Value @User?.FindFirst("LastName")?.Value!</span>
+                                <span class="navbar-text">
+                                    👋 Hello, @User?.FindFirst("FirstName")?.Value @User?.FindFirst("LastName")?.Value!
+                                    <span id="navConnectionStatus" class="badge bg-secondary ms-2">Offline</span>
+                                </span>
                             </li>
                             <li class="nav-item">
                                 <form asp-controller="Account" asp-action="Logout" method="post" class="d-inline">
-                                    <button type="submit" class="btn btn-link nav-link">Logout</button>
+                                    <button type="submit" class="btn btn-link nav-link">🚪 Logout</button>
                                 </form>
                             </li>
                         }
                         else
                         {
                             <li class="nav-item">
-                                <a class="nav-link text-dark" asp-controller="Account" asp-action="Login">Login</a>
+                                <a class="nav-link text-dark" asp-controller="Account" asp-action="Login">🔑 Login</a>
                             </li>
                             <li class="nav-item">
-                                <a class="nav-link text-dark" asp-controller="Account" asp-action="Register">Register</a>
+                                <a class="nav-link text-dark" asp-controller="Account" asp-action="Register">📝 Register</a>
                             </li>
                         }
                     </ul>
@@ -91,7 +176,11 @@
             </div>
         </nav>
     </header>
-    <div class="container">
+
+    <!-- Notification Container -->
+    <div id="notificationContainer"></div>
+
+    <div class="container-fluid">
         <main role="main" class="pb-3">
             @RenderBody()
         </main>
@@ -101,6 +190,169 @@
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
     <script src="~/js/site.js" asp-append-version="true"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/7.0.5/signalr.min.js"></script>
+    
+    <!-- Global Chat Notification Script -->
+    @if (User.Identity.IsAuthenticated)
+    {
+        <script>
+            // Global notification system
+            let globalConnection;
+            let currentPath = window.location.pathname.toLowerCase();
+            
+            // Initialize global connection for notifications
+            async function initializeGlobalNotifications() {
+                try {
+                    const response = await fetch('/Chat/GetToken');
+                    const data = await response.json();
+                    const token = data.token;
+
+                    if (!token) return;
+
+                    globalConnection = new signalR.HubConnectionBuilder()
+                        .withUrl("/chatHub", {
+                            accessTokenFactory: () => token
+                        })
+                        .build();
+
+                    // Handle notifications when not in specific chat
+                    globalConnection.on("ReceivePrivateMessage", function (senderId, senderName, message, time, messageId) {
+                        if (!currentPath.includes('/chat/privatechat') || !currentPath.includes(senderId)) {
+                            showDesktopNotification(senderName, message, false);
+                            showInAppNotification(senderName, message, false);
+                        }
+                        updateNavbarBadge();
+                    });
+
+                    globalConnection.on("ReceiveMessage", function (sender, message, time, messageId, senderId) {
+                        if (!currentPath.includes('/chat/index') && !currentPath.includes('/chat/')) {
+                            showDesktopNotification('General Chat', `${sender}: ${message}`, true);
+                            showInAppNotification(sender, message, true);
+                        }
+                        updateNavbarBadge();
+                    });
+
+                    // Connection status
+                    globalConnection.onclose(function () {
+                        document.getElementById('navConnectionStatus').textContent = 'Disconnected';
+                        document.getElementById('navConnectionStatus').className = 'badge bg-danger ms-2';
+                    });
+
+                    await globalConnection.start();
+                    document.getElementById('navConnectionStatus').textContent = 'Connected';
+                    document.getElementById('navConnectionStatus').className = 'badge bg-success ms-2';
+
+                    // Get initial unread count
+                    updateNavbarBadge();
+
+                } catch (err) {
+                    console.error('Global notification connection error:', err);
+                    document.getElementById('navConnectionStatus').textContent = 'Error';
+                    document.getElementById('navConnectionStatus').className = 'badge bg-danger ms-2';
+                }
+            }
+
+            // Show desktop notification
+            function showDesktopNotification(title, message, isGroup = false) {
+                if ('Notification' in window && Notification.permission === 'granted') {
+                    const notification = new Notification(isGroup ? 'General Chat' : `Message from ${title}`, {
+                        body: message.length > 100 ? message.substring(0, 100) + '...' : message,
+                        icon: '/favicon.ico',
+                        badge: '/favicon.ico',
+                        tag: isGroup ? 'group' : title,
+                        requireInteraction: false
+                    });
+
+                    notification.onclick = function () {
+                        window.focus();
+                        if (isGroup) {
+                            window.location.href = '/Chat/Index';
+                        } else {
+                            window.location.href = '/Chat/ChatList';
+                        }
+                        notification.close();
+                    };
+
+                    setTimeout(() => notification.close(), 5000);
+                }
+            }
+
+            // Show in-app notification toast
+            function showInAppNotification(sender, message, isGroup = false) {
+                const container = document.getElementById('notificationContainer');
+                const toast = document.createElement('div');
+                toast.className = 'notification-toast alert alert-info alert-dismissible';
+                toast.innerHTML = `
+                    <div class="d-flex align-items-center">
+                        <div class="me-2">${isGroup ? '💬' : '📩'}</div>
+                        <div class="flex-grow-1">
+                            <strong>${isGroup ? 'General Chat' : sender}</strong><br>
+                            <small>${message.length > 80 ? message.substring(0, 80) + '...' : message}</small>
+                        </div>
+                        <button type="button" class="btn-close" onclick="this.parentElement.parentElement.remove()"></button>
+                    </div>
+                `;
+
+                container.appendChild(toast);
+
+                // Show with animation
+                setTimeout(() => toast.classList.add('show'), 100);
+
+                // Auto remove after 5 seconds
+                setTimeout(() => {
+                    toast.classList.remove('show');
+                    setTimeout(() => toast.remove(), 300);
+                }, 5000);
+            }
+
+            // Update navbar badge
+            async function updateNavbarBadge() {
+                try {
+                    const response = await fetch('/Chat/GetUnreadCounts');
+                    const data = await response.json();
+                    const total = data.privateUnreadCount + data.groupUnreadCount;
+                    
+                    const badge = document.getElementById('navbarUnreadBadge');
+                    if (total > 0) {
+                        badge.textContent = total > 99 ? '99+' : total;
+                        badge.style.display = 'inline';
+                    } else {
+                        badge.style.display = 'none';
+                    }
+                } catch (err) {
+                    console.error('Error updating navbar badge:', err);
+                }
+            }
+
+            // Request notification permission
+            function requestNotificationPermission() {
+                if ('Notification' in window && Notification.permission === 'default') {
+                    Notification.requestPermission();
+                }
+            }
+
+            // Initialize when page loads
+            document.addEventListener('DOMContentLoaded', function () {
+                initializeGlobalNotifications();
+                requestNotificationPermission();
+                
+                // Update badge every 30 seconds
+                setInterval(updateNavbarBadge, 30000);
+            });
+
+            // Handle page unload
+            window.addEventListener('beforeunload', function () {
+                if (globalConnection) {
+                    globalConnection.stop();
+                }
+            });
+
+            // Update current path on navigation
+            window.addEventListener('popstate', function () {
+                currentPath = window.location.pathname.toLowerCase();
+            });
+        </script>
+    }
+
     @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>

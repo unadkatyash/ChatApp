@@ -28,7 +28,7 @@ namespace ChatApp.Controllers
         public IActionResult Login()
         {
             if (User.Identity?.IsAuthenticated == true)
-                return RedirectToAction("Index", "Chat");
+                return RedirectToAction("ChatList", "Chat");
 
             return View();
         }
@@ -58,7 +58,7 @@ namespace ChatApp.Controllers
                     Expires = DateTime.Now.AddMinutes(30)
                 });
 
-                return RedirectToAction("Index", "Chat");
+                return RedirectToAction("ChatList", "Chat");
             }
 
             ModelState.AddModelError(string.Empty, "Invalid login attempt.");
@@ -69,7 +69,7 @@ namespace ChatApp.Controllers
         public IActionResult Register()
         {
             if (User.Identity?.IsAuthenticated == true)
-                return RedirectToAction("Index", "Chat");
+                return RedirectToAction("ChatList", "Chat");
 
             return View();
         }
@@ -102,7 +102,7 @@ namespace ChatApp.Controllers
                     Expires = DateTime.Now.AddMinutes(30)
                 });
 
-                return RedirectToAction("Index", "Chat");
+                return RedirectToAction("ChatList", "Chat");
             }
 
             foreach (var error in result.Errors)
