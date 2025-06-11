@@ -4,6 +4,8 @@ using ChatApp.Models.ViewModels;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 
 namespace ChatApp.Controllers
 {
@@ -116,9 +118,33 @@ namespace ChatApp.Controllers
         [HttpPost]
         public async Task<IActionResult> Logout()
         {
+            var token = Request.Cookies["jwt"];
+            if (string.IsNullOrEmpty(token))
+            {
+                return RedirectToAction("Login");
+            }
+
+            var handler = new JwtSecurityTokenHandler();
+            var jwtToken = handler.ReadJwtToken(token);
+
+            var userId = jwtToken.Claims.FirstOrDefault(c => c.Type == "nameid")?.Value;
+            if (string.IsNullOrEmpty(userId))
+            {
+                return RedirectToAction("Login");
+            }
+
+            var user = await _userManager.FindByIdAsync(userId);
+            if (user != null)
+            {
+                user.IsOnline = false;
+                await _userManager.UpdateAsync(user);
+            }
+
             await _signInManager.SignOutAsync();
             Response.Cookies.Delete("jwt");
+
             return RedirectToAction("Login");
         }
+
     }
 }

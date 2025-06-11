@@ -1,7 +1,20 @@
 ﻿@model ChatApp.Models.ViewModels.PrivateChatViewModel
 @{
     ViewData["Title"] = $"Chat with {Model.ReceiverName}";
+    var currentUserId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+    var currentUserName = User.FindFirst("FirstName")?.Value + " " + User.FindFirst("LastName")?.Value;
+    var currentUser = User?.Identity?.Name;
+    int count = 0;
 }
+
+<!-- Hidden data attributes for ChatManager -->
+<div id="chat-context"
+     data-current-user="@currentUser"
+     data-current-user-id="@currentUserId"
+     data-current-user-fullname="@currentUserName"
+     data-receiver-id="@Model.ReceiverId"
+     data-receiver-name="@Model.ReceiverName"
+     style="display: none;"></div>
 
 <div class="row">
     <div class="col-md-9">
@@ -20,18 +33,11 @@
             </div>
             <div class="card-body">
                 <div id="messagesList" class="chat-container">
-                    @{
-                        var currentUserId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-                        var currentUserName = User.FindFirst("FirstName")?.Value + " " + User.FindFirst("LastName")?.Value;
-                    }
-
                     @foreach (var message in Model.Messages)
                     {
+                        count++;
                         var isOwnMessage = message.SenderId == currentUserId;
                         <div class="message @(isOwnMessage ? "own" : "other")" data-message-id="@message.Id">
-                            @* <div class="message-header">
-                                <strong>@(isOwnMessage ? "You" : Model.ReceiverName)</strong> - @message.Timestamp.ToString("HH:mm")
-                            </div> *@
                             <div class="message-content">@message.Message</div>
                             @if (isOwnMessage)
                             {
@@ -69,7 +75,6 @@
                     {
                         var isCurrentUser = user.Id == currentUserId;
                         var isReceiver = user.Id == Model.ReceiverId;
-
                         var url = Url.Action("PrivateChat", "Chat", new { userId = user.Id });
 
                         <div class="user-item @(user.IsOnline ? "" : "offline") @(isReceiver ? "current-chat" : "")"
@@ -103,209 +108,23 @@
 </div>
 
 @section Scripts {
+    <script src="~/js/chat-common.js"></script>
     <script>
-        "use strict";
-
-        let connection;
-        let currentUserId = '@currentUserId';
-        let receiverId = '@Model.ReceiverId';
-        let receiverName = '@Model.ReceiverName';
-        let currentUserName = '@currentUserName';
-
-        async function getToken() {
-            try {
-                const response = await fetch('/Chat/GetToken');
-                const data = await response.json();
-                return data.token;
-            } catch (error) {
-                console.error('Error getting token:', error);
-                return null;
-            }
-        }
-
-        async function initializeConnection() {
-            const token = await getToken();
-
-            if (!token) {
-                console.error('No token available');
-                document.getElementById('connectionStatus').textContent = 'Authentication Error';
-                document.getElementById('connectionStatus').className = 'badge bg-danger';
-                return;
-            }
-
-            connection = new signalR.HubConnectionBuilder()
-                .withUrl("/chatHub", {
-                    accessTokenFactory: () => token
-                })
-                .build();
-
-            connection.on("ReceivePrivateMessage", function (senderId, senderName, message, time, messageId) {
-                if (senderId === receiverId) {
-                    addMessageToChat(senderName, message, time, false, messageId);
-                    markMessageAsRead(messageId, 'private');
+        // Page-specific initialization after ChatManager is ready
+        document.addEventListener('DOMContentLoaded', function () {
+            // Set context from hidden elements
+            if (window.chatManager) {
+                const contextElement = document.getElementById('chat-context');
+                if (contextElement) {
+                    chatManager.currentUser = contextElement.getAttribute('data-current-user');
+                    chatManager.currentUserId = contextElement.getAttribute('data-current-user-id');
+                    chatManager.currentUserFullName = contextElement.getAttribute('data-current-user-fullname');
+                    chatManager.receiverId = contextElement.getAttribute('data-receiver-id');
+                    chatManager.receiverName = contextElement.getAttribute('data-receiver-name');
                 }
-            });
-
-            connection.on("PrivateMessageSent", function (toReceiverId, message, time, messageId) {
-                if (toReceiverId === receiverId) {
-                    addMessageToChat("You", message, time, true, messageId);
-                }
-            });
-
-            connection.on("MessageRead", function (messageId, messageType) {
-                if (messageType === 'private') {
-                    updateMessageStatus(messageId, true);
-                }
-            });
-
-            try {
-                await connection.start();
-                document.getElementById('connectionStatus').textContent = 'Connected';
-                document.getElementById('connectionStatus').className = 'badge bg-success';
-
-                await markMessagesAsRead();
-
-                updateUserStatus();
-
-            } catch (err) {
-                console.error('SignalR Connection Error: ', err);
-                document.getElementById('connectionStatus').textContent = 'Connection Failed';
-                document.getElementById('connectionStatus').className = 'badge bg-danger';
-            }
-        }
-
-        function addMessageToChat(sender, message, time, isOwnMessage, messageId) {
-            const messagesList = document.getElementById("messagesList");
-            const messageDiv = document.createElement("div");
-            messageDiv.className = `message ${isOwnMessage ? 'own' : 'other'}`;
-            messageDiv.setAttribute('data-message-id', messageId);
-
-            const statusHtml = isOwnMessage ?
-                '<div class="message-status"><small class="chat-status">✓ Sent</small></div>' : '';
-
-            messageDiv.innerHTML = `
-                        <div class="message-content">${escapeHtml(message)}</div>
-                        ${statusHtml}
-                    `;
-
-            messagesList.appendChild(messageDiv);
-            messagesList.scrollTop = messagesList.scrollHeight;
-        }
-
-        function updateMessageStatus(messageId, isRead) {
-            const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
-            if (messageElement && messageElement.classList.contains('own')) {
-                const statusElement = messageElement.querySelector('.message-status small');
-                if (statusElement && isRead) {
-                    statusElement.innerHTML = '✓✓✓ Seen';
-                    statusElement.className = 'chat-status';
-                }
-            }
-        }
-
-        async function markMessageAsRead(messageId, messageType) {
-            if (connection) {
-                try {
-                    await connection.invoke("MarkMessageAsRead", messageId, messageType);
-                } catch (err) {
-                    console.error('Error marking message as read:', err);
-                }
-            }
-        }
-
-        // Mark all messages as read
-        async function markMessagesAsRead() {
-            try {
-                const response = await fetch('/Chat/MarkMessagesAsRead', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(receiverId)
-                });
-                const result = await response.json();
-                console.log('Marked messages as read:', result.count);
-            } catch (err) {
-                console.error('Error marking messages as read:', err);
-            }
-        }
-
-        // Update user online status
-        function updateUserStatus() {
-            const userElement = document.querySelector(`[data-user-id="${receiverId}"]`);
-            const statusElement = document.getElementById('userStatus');
-
-            if (userElement) {
-                const isOnline = userElement.classList.contains('offline') === false;
-                if (isOnline) {
-                    statusElement.textContent = 'Online';
-                    statusElement.className = 'text-success';
-                } else {
-                    statusElement.textContent = 'Offline';
-                    statusElement.className = 'text-muted';
-                }
-            }
-        }
-
-        // Escape HTML to prevent XSS
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-
-        // Send private message
-        async function sendMessage() {
-            const messageInput = document.getElementById("messageInput");
-            const message = messageInput.value.trim();
-
-            if (message && connection) {
-                try {
-                    await connection.invoke("SendPrivateMessage", receiverId, message);
-                    messageInput.value = "";
-                } catch (err) {
-                    console.error('Send Message Error: ', err);
-                    alert('Failed to send message. Please try again.');
-                }
-            }
-        }
-
-        // Event listeners
-        document.getElementById("sendButton").addEventListener("click", sendMessage);
-
-        document.getElementById("messageInput").addEventListener("keypress", function (e) {
-            if (e.key === "Enter") {
-                sendMessage();
             }
         });
-
-        // Initialize connection when page loads
-        document.addEventListener("DOMContentLoaded", function () {
-            initializeConnection();
-
-            // Auto-scroll to bottom
-            const messagesList = document.getElementById("messagesList");
-            messagesList.scrollTop = messagesList.scrollHeight;
-        });
-
-        // Handle page unload
-        window.addEventListener("beforeunload", function () {
-            if (connection) {
-                connection.stop();
-            }
-        });
-
-        // Update user status every 10 seconds
-        setInterval(updateUserStatus, 10000);
-
-        document.querySelectorAll('.user-item').forEach(function (item) {
-            item.addEventListener('click', function () {
-                const url = this.getAttribute('data-url');
-                if (url) {
-                    window.location.href = url;
-                }
-            });
-        });
+        console.log(@count);
     </script>
 }
 
@@ -337,12 +156,6 @@
             background-color: #e9ecef;
             color: #333;
         }
-
-    .message-header {
-        font-size: 0.8em;
-        opacity: 0.8;
-        margin-bottom: 5px;
-    }
 
     .message-content {
         margin-bottom: 5px;

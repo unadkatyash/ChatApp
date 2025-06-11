@@ -186,7 +186,7 @@ namespace ChatApp.Controllers
         }
 
         [HttpPost]
-        public async Task<IActionResult> MarkMessagesAsRead(string senderId)
+        public async Task<IActionResult> MarkMessagesAsRead([FromBody] string senderId)
         {
             var currentUserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
 
@@ -204,6 +204,36 @@ namespace ChatApp.Controllers
                 await _context.SaveChangesAsync();
 
             return Json(new { success = true, count = unreadMessages.Count });
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> MarkMessagesAsReadGroup([FromBody] string roomId)
+        {
+            var currentUserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+            if (string.IsNullOrEmpty(currentUserId) || string.IsNullOrEmpty(roomId))
+                return BadRequest(new { success = false, message = "Invalid request" });
+
+            var unreadStatuses = await _context.MessageStatuses
+                .Where(ms => ms.UserId == currentUserId &&
+                             !ms.IsRead &&
+                             ms.MessageType == "group" &&
+                             _context.ChatMessages
+                                 .Where(cm => cm.RoomId == roomId)
+                                 .Select(cm => cm.Id)
+                                 .Contains(ms.MessageId))
+                .ToListAsync();
+
+            foreach (var status in unreadStatuses)
+            {
+                status.IsRead = true;
+                status.ReadAt = DateTime.UtcNow;
+            }
+
+            if (unreadStatuses.Any())
+                await _context.SaveChangesAsync();
+
+            return Json(new { success = true, count = unreadStatuses.Count });
         }
 
         [HttpGet]

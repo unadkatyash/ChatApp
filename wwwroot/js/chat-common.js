@@ -13,19 +13,23 @@ class ChatManager {
         this.receiverName = null;
         this.currentRoom = 'general';
 
-        // Page context
         this.pageType = this.detectPageType();
-
-        // Initialize
-        this.init();
+        
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => this.init());
+        } else {
+            this.init();
+        }
     }
 
     detectPageType() {
+        
         const path = window.location.pathname.toLowerCase();
         if (path.includes('/chat/privatechat')) return 'private';
         if (path.includes('/chat/index')) return 'group';
         if (path.includes('/chat/chatlist')) return 'list';
         return 'other';
+        
     }
 
     async init() {
@@ -46,20 +50,27 @@ class ChatManager {
     }
 
     setUserContext() {
-        // Try to get user info from various sources
-        const userNameElement = document.querySelector('[data-current-user]');
-        const userIdElement = document.querySelector('[data-current-user-id]');
-        const userFullNameElement = document.querySelector('[data-current-user-fullname]');
-        const receiverIdElement = document.querySelector('[data-receiver-id]');
-        const receiverNameElement = document.querySelector('[data-receiver-name]');
-        const roomElement = document.querySelector('[data-room]');
+        // Try to get user info from hidden context element
+        const contextElement = document.getElementById('chat-context');
+        if (contextElement) {
+            this.currentUser = contextElement.getAttribute('data-current-user');
+            this.currentUserId = contextElement.getAttribute('data-current-user-id');
+            this.currentUserFullName = contextElement.getAttribute('data-current-user-fullname');
+            this.receiverId = contextElement.getAttribute('data-receiver-id');
+            this.receiverName = contextElement.getAttribute('data-receiver-name');
+            this.currentRoom = contextElement.getAttribute('data-room') || 'general';
+            
+        }
 
-        if (userNameElement) this.currentUser = userNameElement.getAttribute('data-current-user');
-        if (userIdElement) this.currentUserId = userIdElement.getAttribute('data-current-user-id');
-        if (userFullNameElement) this.currentUserFullName = userFullNameElement.getAttribute('data-current-user-fullname');
-        if (receiverIdElement) this.receiverId = receiverIdElement.getAttribute('data-receiver-id');
-        if (receiverNameElement) this.receiverName = receiverNameElement.getAttribute('data-receiver-name');
-        if (roomElement) this.currentRoom = roomElement.getAttribute('data-room');
+        // Fallback to data attributes on other elements
+        if (!this.currentUser) {
+            const userElement = document.querySelector('[data-current-user]');
+            if (userElement) this.currentUser = userElement.getAttribute('data-current-user');
+        }
+        if (!this.currentUserId) {
+            const userIdElement = document.querySelector('[data-current-user-id]');
+            if (userIdElement) this.currentUserId = userIdElement.getAttribute('data-current-user-id');
+        }
     }
 
     async getToken() {
@@ -112,6 +123,7 @@ class ChatManager {
 
         // Group message handler
         this.connection.on("ReceiveMessage", (sender, message, time, messageId, senderId) => {
+            debugger;
             this.handleGroupMessage(sender, message, time, messageId, senderId);
         });
 
@@ -154,6 +166,7 @@ class ChatManager {
             case 'group':
                 if (this.currentRoom) {
                     await this.connection.invoke("JoinRoom", this.currentRoom);
+                    await this.markMessagesAsReadGroup();
                 }
                 break;
             case 'private':
@@ -167,6 +180,7 @@ class ChatManager {
     }
 
     handlePrivateMessage(senderId, senderName, message, time, messageId) {
+        debugger;
         switch (this.pageType) {
             case 'private':
                 if (senderId === this.receiverId) {
@@ -187,6 +201,7 @@ class ChatManager {
     }
 
     handleGroupMessage(sender, message, time, messageId, senderId) {
+        debugger;
         switch (this.pageType) {
             case 'group':
                 this.addMessageToChat(sender, message, time, sender === this.currentUserFullName, messageId);
@@ -213,7 +228,7 @@ class ChatManager {
 
     // UI Update Methods
     updateConnectionStatus(status, type) {
-        const statusElements = document.querySelectorAll('[id*="connectionStatus"], [id*="ConnectionStatus"]');
+        const statusElements = document.querySelectorAll('#connectionStatus, [id*="ConnectionStatus"]');
         statusElements.forEach(element => {
             element.textContent = status;
             element.className = `badge bg-${type}`;
@@ -281,7 +296,10 @@ class ChatManager {
             const unreadBadge = document.createElement('small');
             unreadBadge.className = 'badge bg-danger rounded-pill unread-count';
             unreadBadge.textContent = '1';
-            userChatItem.querySelector('.d-flex.w-100.justify-content-between').appendChild(unreadBadge);
+            const flexContainer = userChatItem.querySelector('.d-flex.w-100.justify-content-between');
+            if (flexContainer) {
+                flexContainer.appendChild(unreadBadge);
+            }
         } else {
             const currentCount = parseInt(unreadElement.textContent) || 0;
             unreadElement.textContent = currentCount + 1;
@@ -289,7 +307,9 @@ class ChatManager {
 
         // Move to top
         const parent = userChatItem.parentElement;
-        parent.insertBefore(userChatItem, parent.children[1]);
+        if (parent && parent.children.length > 1) {
+            parent.insertBefore(userChatItem, parent.children[1]);
+        }
     }
 
     updateUnreadBadges(groupUnreadCount, privateUnreadCount) {
@@ -343,6 +363,7 @@ class ChatManager {
     }
 
     async markMessagesAsRead() {
+        debugger;
         if (this.pageType !== 'private' || !this.receiverId) return;
 
         try {
@@ -358,6 +379,37 @@ class ChatManager {
         }
     }
 
+    async markMessagesAsReadGroup(messageId, messageType) {
+        
+        if (this.connection) {
+            
+            try {
+                await this.connection.invoke("MarkMessagesAsReadGroup", messageId, messageType);
+            } catch (err) {
+                console.error('Error marking message as read:', err);
+            }
+        }
+    }
+
+    async markMessagesAsReadGroup() {
+        debugger;
+        if (this.pageType !== 'group' || !this.currentUserId) return;
+
+        try {
+            const response = await fetch('/Chat/MarkMessagesAsReadGroup', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(this.currentRoom)
+            });
+            const result = await response.json();
+            console.log('Marked messages as read:', result.count);
+        } catch (err) {
+            console.error('Error marking messages as read:', err);
+        }
+    }
+
+
+
     async updateUnreadCount() {
         if (this.connection) {
             try {
@@ -370,6 +422,7 @@ class ChatManager {
 
     // Notification Methods
     showNotification(senderName, message, isGroup = false) {
+        debugger;
         if ('Notification' in window && Notification.permission === 'granted') {
             const title = isGroup ? `New message in General Chat` : `New message from ${senderName}`;
             const options = {
@@ -402,7 +455,7 @@ class ChatManager {
     }
 
     requestNotificationPermission() {
-        if ('Notification' in window && Notification.permission === 'default') {
+        if ('Notification' in window && Notification.permission === 'denied') {
             Notification.requestPermission();
         }
     }
