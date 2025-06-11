@@ -198,7 +198,6 @@
             // Global notification system
             let globalConnection;
             let currentPath = window.location.pathname.toLowerCase();
-            
             // Initialize global connection for notifications
             async function initializeGlobalNotifications() {
                 try {
@@ -224,7 +223,7 @@
                     });
 
                     globalConnection.on("ReceiveMessage", function (sender, message, time, messageId, senderId) {
-                        if (!currentPath.includes('/chat/index') && !currentPath.includes('/chat/')) {
+                        if (!currentPath.includes('/chat/index')) {
                             showDesktopNotification('General Chat', `${sender}: ${message}`, true);
                             showInAppNotification(sender, message, true);
                         }

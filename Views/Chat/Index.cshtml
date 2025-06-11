@@ -61,11 +61,9 @@
         loadOnlineUsers();
         setInterval(loadOnlineUsers, 5000);
 
-        // Get JWT token from cookie
         async function getToken() {
             try {
                 const response = await fetch('/Chat/GetToken');
-                console.log(response);
                 const data = await response.json();
                 return data.token;
             } catch (error) {
@@ -74,7 +72,6 @@
             }
         }
 
-        // Initialize SignalR connection
         async function initializeConnection() {
             const token = await getToken();
 
@@ -91,33 +88,29 @@
                 })
                 .build();
 
-            // Handle incoming messages
             connection.on("ReceiveMessage", function (sender, message, time) {
                 addMessageToChat(sender, message, time, sender === currentUserFullName);
             });
 
-            // Handle user joined
             connection.on("UserJoined", function (userName, user) {
                 if (user !== currentUser) {
                     addSystemMessage(userName + " joined the chat");
                 }
             });
 
-            // Handle user left
             connection.on("UserLeft", function (userName, user) {
                 if (user !== currentUser) {
                     addSystemMessage(userName + " left the chat");
                 }
             });
 
-            // Start connection
             try {
                 await connection.start();
                 document.getElementById('connectionStatus').textContent = 'Connected';
                 document.getElementById('connectionStatus').className = 'badge bg-success';
 
                 // Join the room
-                // await connection.invoke("JoinRoom", "@ViewBag.Room");
+                await connection.invoke("JoinRoom", "@ViewBag.Room");
 
             } catch (err) {
                 console.error('SignalR Connection Error: ', err);
@@ -126,7 +119,6 @@
             }
         }
 
-        // Add message to chat
         function addMessageToChat(sender, message, time, isOwnMessage) {
             const messagesList = document.getElementById("messagesList");
             const messageDiv = document.createElement("div");
@@ -143,7 +135,6 @@
             messagesList.scrollTop = messagesList.scrollHeight;
         }
 
-        // Add system message
         function addSystemMessage(message) {
             const messagesList = document.getElementById("messagesList");
             const messageDiv = document.createElement("div");
@@ -154,14 +145,12 @@
             messagesList.scrollTop = messagesList.scrollHeight;
         }
 
-        // Escape HTML to prevent XSS
         function escapeHtml(text) {
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
         }
 
-        // Send message
         async function sendMessage() {
             const messageInput = document.getElementById("messageInput");
             const message = messageInput.value.trim();
@@ -177,7 +166,6 @@
             }
         }
 
-        // Event listeners
         document.getElementById("sendButton").addEventListener("click", sendMessage);
 
         document.getElementById("messageInput").addEventListener("keypress", function (e) {
@@ -186,12 +174,10 @@
             }
         });
 
-        // Initialize connection when page loads
         document.addEventListener("DOMContentLoaded", function () {
             initializeConnection();
         });
 
-        // Handle page unload
         window.addEventListener("beforeunload", function () {
             if (connection) {
                 connection.stop();
@@ -211,7 +197,6 @@
                     return;
                 }
 
-                // Sort: current user first, then by online status
                 users.sort((a, b) => {
                     if (a.userName === currentUser) return -1;
                     if (b.userName === currentUser) return 1;
@@ -226,7 +211,6 @@
                     const isCurrentUser = user.userName === currentUser;
                     const isOnline = user.isOnline;
 
-                    // Set class based on online status
                     div.className = isOnline ? "user-item" : "user-item offline";
 
                     const dotClass = isOnline ? "text-success" : "text-muted";

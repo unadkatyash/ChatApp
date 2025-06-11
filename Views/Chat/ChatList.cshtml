@@ -134,7 +134,6 @@
         let currentUser = '@User?.Identity?.Name';
         let currentUserId = '@User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value';
 
-        // Get JWT token from cookie
         async function getToken() {
             try {
                 const response = await fetch('/Chat/GetToken');
@@ -146,7 +145,6 @@
             }
         }
 
-        // Initialize SignalR connection
         async function initializeConnection() {
             const token = await getToken();
 
@@ -163,19 +161,16 @@
                 })
                 .build();
 
-            // Handle incoming private messages
             connection.on("ReceivePrivateMessage", function (senderId, senderName, message, time, messageId) {
                 updateChatList(senderId, senderName, message, time);
                 updateUnreadCount();
                 showNotification(senderName, message);
             });
 
-            // Handle unread message counts
             connection.on("UnreadMessageCount", function (groupUnreadCount, privateUnreadCount) {
                 updateUnreadBadges(groupUnreadCount, privateUnreadCount);
             });
 
-            // Handle new group messages
             connection.on("ReceiveMessage", function (sender, message, time, messageId, senderId) {
                 if (senderId !== currentUserId) {
                     updateUnreadCount();
@@ -183,13 +178,11 @@
                 }
             });
 
-            // Start connection
             try {
                 await connection.start();
                 document.getElementById('connectionStatus').textContent = 'Connected';
                 document.getElementById('connectionStatus').className = 'badge bg-success';
 
-                // Get initial unread counts
                 await connection.invoke("GetUnreadMessageCount");
 
             } catch (err) {
@@ -199,17 +192,14 @@
             }
         }
 
-        // Update chat list with new message
         function updateChatList(senderId, senderName, message, time) {
             const userChatItem = document.querySelector(`[data-user-id="${senderId}"]`);
             if (userChatItem) {
-                // Update last message
                 const lastMessageElement = userChatItem.querySelector('.last-message');
                 if (lastMessageElement) {
                     lastMessageElement.textContent = message.length > 50 ? message.substring(0, 50) + '...' : message;
                 }
 
-                // Update unread count
                 let unreadElement = userChatItem.querySelector('.unread-count');
                 if (!unreadElement) {
                     const unreadBadge = document.createElement('small');
@@ -221,13 +211,11 @@
                     unreadElement.textContent = currentCount + 1;
                 }
 
-                // Move to top
                 const parent = userChatItem.parentElement;
-                parent.insertBefore(userChatItem, parent.children[1]); // After general chat
+                parent.insertBefore(userChatItem, parent.children[1]);
             }
         }
 
-        // Update unread badges
         function updateUnreadBadges(groupUnreadCount, privateUnreadCount) {
             const totalUnread = groupUnreadCount + privateUnreadCount;
             const unreadBadge = document.getElementById('unreadBadge');
@@ -248,7 +236,6 @@
             }
         }
 
-        // Update unread count
         async function updateUnreadCount() {
             if (connection) {
                 try {
@@ -259,7 +246,6 @@
             }
         }
 
-        // Show browser notification
         function showNotification(senderName, message, isGroup = false) {
             if ('Notification' in window && Notification.permission === 'granted') {
                 const title = isGroup ? `New message in General Chat` : `New message from ${senderName}`;
@@ -277,7 +263,6 @@
                     if (isGroup) {
                         window.location.href = '/Chat/Index';
                     } else {
-                        // Find user ID from the sender name (you might need to store this mapping)
                         const userChatItem = Array.from(document.querySelectorAll('.user-chat-item')).find(item =>
                             item.textContent.includes(senderName)
                         );
@@ -289,28 +274,23 @@
                     notification.close();
                 };
 
-                // Auto close after 5 seconds
                 setTimeout(() => notification.close(), 5000);
             }
         }
 
-        // Request notification permission
         function requestNotificationPermission() {
             if ('Notification' in window && Notification.permission === 'default') {
                 Notification.requestPermission();
             }
         }
 
-        // Initialize when page loads
         document.addEventListener("DOMContentLoaded", function () {
             initializeConnection();
             requestNotificationPermission();
 
-            // Refresh unread counts every 30 seconds
             setInterval(updateUnreadCount, 30000);
         });
 
-        // Handle page unload
         window.addEventListener("beforeunload", function () {
             if (connection) {
                 connection.stop();

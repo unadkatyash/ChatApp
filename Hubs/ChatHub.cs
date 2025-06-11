@@ -3,6 +3,7 @@ using ChatApp.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using System.Collections.Concurrent;
 using System.Security.Claims;
 
 namespace ChatApp.Hubs
@@ -11,6 +12,7 @@ namespace ChatApp.Hubs
     public class ChatHub : Hub
     {
         private readonly ApplicationDbContext _context;
+        private static ConcurrentDictionary<string, string> _connectionRooms = new ConcurrentDictionary<string, string>();
 
         public ChatHub(ApplicationDbContext context)
         {
@@ -169,6 +171,7 @@ namespace ChatApp.Hubs
         public async Task JoinRoom(string roomId = "general")
         {
             await Groups.AddToGroupAsync(Context.ConnectionId, roomId);
+            _connectionRooms.AddOrUpdate(Context.ConnectionId, roomId, (key, oldValue) => roomId);
 
             var userId = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             var userName = Context.User?.FindFirst("FirstName")?.Value + " " + Context.User?.FindFirst("LastName")?.Value;
@@ -179,6 +182,7 @@ namespace ChatApp.Hubs
         public async Task LeaveRoom(string roomId = "general")
         {
             await Groups.RemoveFromGroupAsync(Context.ConnectionId, roomId);
+            _connectionRooms.TryRemove(Context.ConnectionId, out _);
 
             var userId = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             var userName = Context.User?.FindFirst("FirstName")?.Value + " " + Context.User?.FindFirst("LastName")?.Value;
@@ -225,13 +229,22 @@ namespace ChatApp.Hubs
                 await GetUnreadMessageCount();
             }
 
-            await JoinRoom("general");
             await base.OnConnectedAsync();
         }
 
         public override async Task OnDisconnectedAsync(Exception? exception)
         {
             var userId = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            var userName = Context.User?.FindFirst("FirstName")?.Value + " " + Context.User?.FindFirst("LastName")?.Value;
+
+            string disconnectedRoomId;
+            if (_connectionRooms.TryRemove(Context.ConnectionId, out disconnectedRoomId))
+            {
+                if (disconnectedRoomId.ToLower() == "general")
+                {
+                    await Clients.Group(disconnectedRoomId).SendAsync("UserLeft", userName, userId);
+                }
+            }
             if (!string.IsNullOrEmpty(userId))
             {
                 var connection = await _context.UserConnections
@@ -258,7 +271,6 @@ namespace ChatApp.Hubs
                 }
             }
 
-            await LeaveRoom("general");
             await base.OnDisconnectedAsync(exception);
         }
 

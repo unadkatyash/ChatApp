@@ -70,23 +70,22 @@
                         var isCurrentUser = user.Id == currentUserId;
                         var isReceiver = user.Id == Model.ReceiverId;
 
-                        <div class="user-item @(user.IsOnline ? "" : "offline") @(isReceiver ? "current-chat" : "")" data-user-id="@user.Id">
+                        var url = Url.Action("PrivateChat", "Chat", new { userId = user.Id });
+
+                        <div class="user-item @(user.IsOnline ? "" : "offline") @(isReceiver ? "current-chat" : "")"
+                             data-user-id="@user.Id"
+                             data-url="@url"
+                             style="cursor: pointer;">
                             <span class="@(user.IsOnline ? "text-success" : "text-muted") me-1">●</span>
                             @if (isCurrentUser)
                             {
                                 <strong>You (@user.FirstName @user.LastName)</strong>
                             }
-                            else if (isReceiver)
+                            else
                             {
                                 <strong>@user.FirstName @user.LastName</strong>
                             }
-                            else
-                            {
-                                <a href="@Url.Action("PrivateChat", "Chat", new { userId = user.Id })" class="text-decoration-none">
-                                    @user.FirstName @user.LastName
-                                </a>
-                            }
-                            <br>
+                            <br />
                             @if (user.IsOnline)
                             {
                                 <span class="text-success ms-4">Online</span>
@@ -185,9 +184,6 @@
                 '<div class="message-status"><small class="chat-status">✓ Sent</small></div>' : '';
 
             messageDiv.innerHTML = `
-                        <div class="message-header">
-                            <strong>${escapeHtml(sender)}</strong> - ${time}
-                        </div>
                         <div class="message-content">${escapeHtml(message)}</div>
                         ${statusHtml}
                     `;
@@ -301,6 +297,15 @@
 
         // Update user status every 10 seconds
         setInterval(updateUserStatus, 10000);
+
+        document.querySelectorAll('.user-item').forEach(function (item) {
+            item.addEventListener('click', function () {
+                const url = this.getAttribute('data-url');
+                if (url) {
+                    window.location.href = url;
+                }
+            });
+        });
     </script>
 }
 

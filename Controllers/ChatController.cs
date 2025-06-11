@@ -222,10 +222,14 @@ namespace ChatApp.Controllers
 
         private async Task<List<ApplicationUser>> GetOnlineUsersAsync()
         {
+            var currentUserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
             return await _context.Users
+                .Where(u => u.Id != currentUserId)
                 .OrderByDescending(u => u.IsOnline)
                 .ThenBy(u => u.FirstName)
                 .ToListAsync();
         }
+
     }
 }
