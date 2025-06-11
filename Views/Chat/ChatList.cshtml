@@ -3,6 +3,13 @@
     ViewData["Title"] = "Chat List";
 }
 
+<div id="chatContext"
+     data-current-user="@User?.Identity?.Name"
+     data-current-user-id="@User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value"
+     data-current-user-fullname="@(User?.FindFirst("FirstName")?.Value + " " + User?.FindFirst("LastName")?.Value)"
+     style="display: none;">
+</div>
+
 <div class="row">
     <div class="col-md-12">
         <div class="card">
@@ -127,174 +134,5 @@
 </div>
 
 @section Scripts {
-    <script>
-        "use strict";
-
-        let connection;
-        let currentUser = '@User?.Identity?.Name';
-        let currentUserId = '@User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value';
-
-        async function getToken() {
-            try {
-                const response = await fetch('/Chat/GetToken');
-                const data = await response.json();
-                return data.token;
-            } catch (error) {
-                console.error('Error getting token:', error);
-                return null;
-            }
-        }
-
-        async function initializeConnection() {
-            const token = await getToken();
-
-            if (!token) {
-                console.error('No token available');
-                document.getElementById('connectionStatus').textContent = 'Authentication Error';
-                document.getElementById('connectionStatus').className = 'badge bg-danger';
-                return;
-            }
-
-            connection = new signalR.HubConnectionBuilder()
-                .withUrl("/chatHub", {
-                    accessTokenFactory: () => token
-                })
-                .build();
-
-            connection.on("ReceivePrivateMessage", function (senderId, senderName, message, time, messageId) {
-                updateChatList(senderId, senderName, message, time);
-                updateUnreadCount();
-                showNotification(senderName, message);
-            });
-
-            connection.on("UnreadMessageCount", function (groupUnreadCount, privateUnreadCount) {
-                updateUnreadBadges(groupUnreadCount, privateUnreadCount);
-            });
-
-            connection.on("ReceiveMessage", function (sender, message, time, messageId, senderId) {
-                if (senderId !== currentUserId) {
-                    updateUnreadCount();
-                    showNotification(sender, message, true);
-                }
-            });
-
-            try {
-                await connection.start();
-                document.getElementById('connectionStatus').textContent = 'Connected';
-                document.getElementById('connectionStatus').className = 'badge bg-success';
-
-                await connection.invoke("GetUnreadMessageCount");
-
-            } catch (err) {
-                console.error('SignalR Connection Error: ', err);
-                document.getElementById('connectionStatus').textContent = 'Connection Failed';
-                document.getElementById('connectionStatus').className = 'badge bg-danger';
-            }
-        }
-
-        function updateChatList(senderId, senderName, message, time) {
-            const userChatItem = document.querySelector(`[data-user-id="${senderId}"]`);
-            if (userChatItem) {
-                const lastMessageElement = userChatItem.querySelector('.last-message');
-                if (lastMessageElement) {
-                    lastMessageElement.textContent = message.length > 50 ? message.substring(0, 50) + '...' : message;
-                }
-
-                let unreadElement = userChatItem.querySelector('.unread-count');
-                if (!unreadElement) {
-                    const unreadBadge = document.createElement('small');
-                    unreadBadge.className = 'badge bg-danger rounded-pill unread-count';
-                    unreadBadge.textContent = '1';
-                    userChatItem.querySelector('.d-flex.w-100.justify-content-between').appendChild(unreadBadge);
-                } else {
-                    const currentCount = parseInt(unreadElement.textContent) || 0;
-                    unreadElement.textContent = currentCount + 1;
-                }
-
-                const parent = userChatItem.parentElement;
-                parent.insertBefore(userChatItem, parent.children[1]);
-            }
-        }
-
-        function updateUnreadBadges(groupUnreadCount, privateUnreadCount) {
-            const totalUnread = groupUnreadCount + privateUnreadCount;
-            const unreadBadge = document.getElementById('unreadBadge');
-            const groupUnreadElement = document.getElementById('groupUnreadCount');
-
-            if (totalUnread > 0) {
-                unreadBadge.textContent = totalUnread;
-                unreadBadge.style.display = 'inline';
-            } else {
-                unreadBadge.style.display = 'none';
-            }
-
-            if (groupUnreadCount > 0) {
-                groupUnreadElement.textContent = groupUnreadCount;
-                groupUnreadElement.style.display = 'inline';
-            } else {
-                groupUnreadElement.style.display = 'none';
-            }
-        }
-
-        async function updateUnreadCount() {
-            if (connection) {
-                try {
-                    await connection.invoke("GetUnreadMessageCount");
-                } catch (err) {
-                    console.error('Error getting unread count:', err);
-                }
-            }
-        }
-
-        function showNotification(senderName, message, isGroup = false) {
-            if ('Notification' in window && Notification.permission === 'granted') {
-                const title = isGroup ? `New message in General Chat` : `New message from ${senderName}`;
-                const options = {
-                    body: message.length > 100 ? message.substring(0, 100) + '...' : message,
-                    icon: '/favicon.ico',
-                    badge: '/favicon.ico',
-                    tag: isGroup ? 'group' : senderName
-                };
-
-                const notification = new Notification(title, options);
-
-                notification.onclick = function () {
-                    window.focus();
-                    if (isGroup) {
-                        window.location.href = '/Chat/Index';
-                    } else {
-                        const userChatItem = Array.from(document.querySelectorAll('.user-chat-item')).find(item =>
-                            item.textContent.includes(senderName)
-                        );
-                        if (userChatItem) {
-                            const userId = userChatItem.getAttribute('data-user-id');
-                            window.location.href = `/Chat/PrivateChat?userId=${userId}`;
-                        }
-                    }
-                    notification.close();
-                };
-
-                setTimeout(() => notification.close(), 5000);
-            }
-        }
-
-        function requestNotificationPermission() {
-            if ('Notification' in window && Notification.permission === 'default') {
-                Notification.requestPermission();
-            }
-        }
-
-        document.addEventListener("DOMContentLoaded", function () {
-            initializeConnection();
-            requestNotificationPermission();
-
-            setInterval(updateUnreadCount, 30000);
-        });
-
-        window.addEventListener("beforeunload", function () {
-            if (connection) {
-                connection.stop();
-            }
-        });
-    </script>
+    <script src="~/js/chat-manager.js"></script>
 }

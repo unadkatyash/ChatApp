@@ -16,6 +16,7 @@
             background-color: #f8f9fa;
             scroll-behavior: smooth;
         }
+
         .message {
             margin-bottom: 15px;
             padding: 10px 15px;
@@ -24,31 +25,38 @@
             position: relative;
             word-wrap: break-word;
         }
-        .message.own {
-            background-color: #007bff;
-            color: white;
-            margin-left: auto;
-            text-align: right;
-        }
-        .message.other {
-            background-color: #e9ecef;
-            color: #333;
-        }
+
+            .message.own {
+                background-color: #007bff;
+                color: white;
+                margin-left: auto;
+                text-align: right;
+            }
+
+            .message.other {
+                background-color: #e9ecef;
+                color: #333;
+            }
+
         .message-header {
             font-size: 0.8em;
             opacity: 0.8;
             margin-bottom: 5px;
         }
+
         .message-content {
             margin-bottom: 5px;
         }
+
         .message-status {
             font-size: 0.7em;
             opacity: 0.8;
         }
+
         .input-group {
             margin-top: 15px;
         }
+
         .online-users {
             background-color: #f8f9fa;
             border: 1px solid #ddd;
@@ -57,22 +65,27 @@
             height: 70vh;
             overflow-y: auto;
         }
+
         .user-item {
             padding: 10px;
             margin-bottom: 5px;
             border-radius: 8px;
             transition: background-color 0.2s;
         }
-        .user-item:hover {
-            background-color: #e9ecef;
-        }
-        .user-item.offline {
-            opacity: 0.6;
-        }
-        .user-item.current-chat {
-            background-color: #e3f2fd;
-            border: 1px solid #2196f3;
-        }
+
+            .user-item:hover {
+                background-color: #e9ecef;
+            }
+
+            .user-item.offline {
+                opacity: 0.6;
+            }
+
+            .user-item.current-chat {
+                background-color: #e3f2fd;
+                border: 1px solid #2196f3;
+            }
+
         .notification-toast {
             position: fixed;
             top: 20px;
@@ -83,39 +96,48 @@
             transform: translateX(100%);
             transition: all 0.3s ease;
         }
-        .notification-toast.show {
-            opacity: 1;
-            transform: translateX(0);
-        }
+
+            .notification-toast.show {
+                opacity: 1;
+                transform: translateX(0);
+            }
+
         .typing-indicator {
             font-style: italic;
             color: #6c757d;
             font-size: 0.9em;
             padding: 5px 0;
         }
+
         .unread-badge {
             position: absolute;
             top: -5px;
             right: -5px;
         }
+
         .chat-list-item {
             position: relative;
             transition: background-color 0.2s;
         }
-        .chat-list-item:hover {
-            background-color: #f8f9fa;
-        }
+
+            .chat-list-item:hover {
+                background-color: #f8f9fa;
+            }
+
         .last-message {
             font-size: 0.9em;
             color: #6c757d;
         }
+
         .message-time {
             font-size: 0.8em;
             color: #6c757d;
         }
+
         .connection-status {
             font-size: 0.8em;
         }
+
         .navbar-unread-badge {
             position: absolute;
             top: 5px;
@@ -190,164 +212,21 @@
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
     <script src="~/js/site.js" asp-append-version="true"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/7.0.5/signalr.min.js"></script>
-    
-    <!-- Global Chat Notification Script -->
+
+    <!-- Chat Common Module -->
+    <script src="~/js/chat-common.js" asp-append-version="true"></script>
+
+    <!-- Initialize Global Chat -->
     @if (User.Identity.IsAuthenticated)
     {
         <script>
-            // Global notification system
-            let globalConnection;
-            let currentPath = window.location.pathname.toLowerCase();
-            // Initialize global connection for notifications
-            async function initializeGlobalNotifications() {
-                try {
-                    const response = await fetch('/Chat/GetToken');
-                    const data = await response.json();
-                    const token = data.token;
-
-                    if (!token) return;
-
-                    globalConnection = new signalR.HubConnectionBuilder()
-                        .withUrl("/chatHub", {
-                            accessTokenFactory: () => token
-                        })
-                        .build();
-
-                    // Handle notifications when not in specific chat
-                    globalConnection.on("ReceivePrivateMessage", function (senderId, senderName, message, time, messageId) {
-                        if (!currentPath.includes('/chat/privatechat') || !currentPath.includes(senderId)) {
-                            showDesktopNotification(senderName, message, false);
-                            showInAppNotification(senderName, message, false);
-                        }
-                        updateNavbarBadge();
-                    });
-
-                    globalConnection.on("ReceiveMessage", function (sender, message, time, messageId, senderId) {
-                        if (!currentPath.includes('/chat/index')) {
-                            showDesktopNotification('General Chat', `${sender}: ${message}`, true);
-                            showInAppNotification(sender, message, true);
-                        }
-                        updateNavbarBadge();
-                    });
-
-                    // Connection status
-                    globalConnection.onclose(function () {
-                        document.getElementById('navConnectionStatus').textContent = 'Disconnected';
-                        document.getElementById('navConnectionStatus').className = 'badge bg-danger ms-2';
-                    });
-
-                    await globalConnection.start();
-                    document.getElementById('navConnectionStatus').textContent = 'Connected';
-                    document.getElementById('navConnectionStatus').className = 'badge bg-success ms-2';
-
-                    // Get initial unread count
-                    updateNavbarBadge();
-
-                } catch (err) {
-                    console.error('Global notification connection error:', err);
-                    document.getElementById('navConnectionStatus').textContent = 'Error';
-                    document.getElementById('navConnectionStatus').className = 'badge bg-danger ms-2';
-                }
-            }
-
-            // Show desktop notification
-            function showDesktopNotification(title, message, isGroup = false) {
-                if ('Notification' in window && Notification.permission === 'granted') {
-                    const notification = new Notification(isGroup ? 'General Chat' : `Message from ${title}`, {
-                        body: message.length > 100 ? message.substring(0, 100) + '...' : message,
-                        icon: '/favicon.ico',
-                        badge: '/favicon.ico',
-                        tag: isGroup ? 'group' : title,
-                        requireInteraction: false
-                    });
-
-                    notification.onclick = function () {
-                        window.focus();
-                        if (isGroup) {
-                            window.location.href = '/Chat/Index';
-                        } else {
-                            window.location.href = '/Chat/ChatList';
-                        }
-                        notification.close();
-                    };
-
-                    setTimeout(() => notification.close(), 5000);
-                }
-            }
-
-            // Show in-app notification toast
-            function showInAppNotification(sender, message, isGroup = false) {
-                const container = document.getElementById('notificationContainer');
-                const toast = document.createElement('div');
-                toast.className = 'notification-toast alert alert-info alert-dismissible';
-                toast.innerHTML = `
-                    <div class="d-flex align-items-center">
-                        <div class="me-2">${isGroup ? '💬' : '📩'}</div>
-                        <div class="flex-grow-1">
-                            <strong>${isGroup ? 'General Chat' : sender}</strong><br>
-                            <small>${message.length > 80 ? message.substring(0, 80) + '...' : message}</small>
-                        </div>
-                        <button type="button" class="btn-close" onclick="this.parentElement.parentElement.remove()"></button>
-                    </div>
-                `;
-
-                container.appendChild(toast);
-
-                // Show with animation
-                setTimeout(() => toast.classList.add('show'), 100);
-
-                // Auto remove after 5 seconds
-                setTimeout(() => {
-                    toast.classList.remove('show');
-                    setTimeout(() => toast.remove(), 300);
-                }, 5000);
-            }
-
-            // Update navbar badge
-            async function updateNavbarBadge() {
-                try {
-                    const response = await fetch('/Chat/GetUnreadCounts');
-                    const data = await response.json();
-                    const total = data.privateUnreadCount + data.groupUnreadCount;
-                    
-                    const badge = document.getElementById('navbarUnreadBadge');
-                    if (total > 0) {
-                        badge.textContent = total > 99 ? '99+' : total;
-                        badge.style.display = 'inline';
-                    } else {
-                        badge.style.display = 'none';
-                    }
-                } catch (err) {
-                    console.error('Error updating navbar badge:', err);
-                }
-            }
-
-            // Request notification permission
-            function requestNotificationPermission() {
-                if ('Notification' in window && Notification.permission === 'default') {
-                    Notification.requestPermission();
-                }
-            }
-
-            // Initialize when page loads
-            document.addEventListener('DOMContentLoaded', function () {
-                initializeGlobalNotifications();
-                requestNotificationPermission();
-                
-                // Update badge every 30 seconds
-                setInterval(updateNavbarBadge, 30000);
-            });
-
-            // Handle page unload
-            window.addEventListener('beforeunload', function () {
-                if (globalConnection) {
-                    globalConnection.stop();
-                }
-            });
-
-            // Update current path on navigation
-            window.addEventListener('popstate', function () {
-                currentPath = window.location.pathname.toLowerCase();
+            document.addEventListener('DOMContentLoaded', async function () {
+                // Initialize chat manager with user context
+                await window.chatManager.initialize({
+                    userName: '@User?.Identity?.Name',
+                    userId: '@User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value',
+                    fullName: '@(User?.FindFirst("FirstName")?.Value + " " + User?.FindFirst("LastName")?.Value)'
+                });
             });
         </script>
     }
