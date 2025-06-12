@@ -27,8 +27,9 @@ namespace ChatApp.Controllers
 
             var messages = await _context.ChatMessages
                 .Where(m => m.RoomId == room)
-                .OrderBy(m => m.Timestamp)
+                .OrderByDescending(m => m.Timestamp)
                 .Take(50)
+                .OrderBy(m => m.Timestamp)
                 .ToListAsync();
 
             return View(messages);

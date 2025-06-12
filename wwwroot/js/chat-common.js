@@ -123,7 +123,6 @@ class ChatManager {
 
         // Group message handler
         this.connection.on("ReceiveMessage", (sender, message, time, messageId, senderId) => {
-            debugger;
             this.handleGroupMessage(sender, message, time, messageId, senderId);
         });
 
@@ -363,7 +362,6 @@ class ChatManager {
     }
 
     async markMessagesAsRead() {
-        debugger;
         if (this.pageType !== 'private' || !this.receiverId) return;
 
         try {
@@ -392,7 +390,6 @@ class ChatManager {
     }
 
     async markMessagesAsReadGroup() {
-        debugger;
         if (this.pageType !== 'group' || !this.currentUserId) return;
 
         try {
@@ -422,7 +419,6 @@ class ChatManager {
 
     // Notification Methods
     showNotification(senderName, message, isGroup = false) {
-        debugger;
         if ('Notification' in window && Notification.permission === 'granted') {
             const title = isGroup ? `New message in General Chat` : `New message from ${senderName}`;
             const options = {
