@@ -1,6 +1,6 @@
 ﻿/**
  * Centralized Chat Manager for ASP.NET Core Chat Application
- * Handles SignalR connections, messaging, notifications, and UI updates
+ * Handles SignalR connections, messaging, notifications, typing indicators, and UI updates
  */
 
 class ChatManager {
@@ -13,8 +13,15 @@ class ChatManager {
         this.receiverName = null;
         this.currentRoom = 'general';
 
+        // Typing indicator properties
+        this.typingTimeout = null;
+        this.isTyping = false;
+        this.typingUsers = new Set();
+        this.userIdToNameMap = new Map();
+        this.typingTimeoutDuration = 4000;
+
         this.pageType = this.detectPageType();
-        
+
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', () => this.init());
         } else {
@@ -23,13 +30,11 @@ class ChatManager {
     }
 
     detectPageType() {
-        
         const path = window.location.pathname.toLowerCase();
         if (path.includes('/chat/privatechat')) return 'private';
         if (path.includes('/chat/index')) return 'group';
         if (path.includes('/chat/chatlist')) return 'list';
         return 'other';
-        
     }
 
     async init() {
@@ -144,6 +149,15 @@ class ChatManager {
             this.updateUnreadBadges(groupUnreadCount, privateUnreadCount);
         });
 
+        // Typing indicators
+        this.connection.on("UserTyping", (userId, userName, isPrivate, receiverId) => {
+            this.handleUserTyping(userId, userName, isPrivate, receiverId);
+        });
+
+        this.connection.on("UserStoppedTyping", (userId, isPrivate, receiverId) => {
+            this.handleUserStoppedTyping(userId, isPrivate, receiverId);
+        });
+
         // User joined/left
         this.connection.on("UserJoined", (userName, user) => {
             if (user !== this.currentUser) {
@@ -181,7 +195,153 @@ class ChatManager {
         }
     }
 
+    // Typing indicator methods
+    handleUserTyping(userId, userName, isPrivate, receiverId) {
+        // Don't show typing indicator for own messages
+        if (userId === this.currentUserId) return;
+
+        // Check if this typing event is relevant to current page
+        if (this.pageType === 'private' && isPrivate && receiverId === this.currentUserId) {
+            // Show typing indicator for private chat
+            this.showTypingIndicator(userId, userName);
+        } else if (this.pageType === 'group' && !isPrivate) {
+            // Show typing indicator for group chat
+            this.showTypingIndicator(userId, userName);
+        }
+    }
+
+    handleUserStoppedTyping(userId, isPrivate, receiverId) {
+        // Don't process own typing events
+        if (userId === this.currentUserId) return;
+
+        // Check if this typing event is relevant to current page
+        if (this.pageType === 'private' && isPrivate && receiverId === this.currentUserId) {
+            this.hideTypingIndicator(userId);
+        } else if (this.pageType === 'group' && !isPrivate) {
+            this.hideTypingIndicator(userId);
+        }
+    }
+
+    showTypingIndicator(userId, userName) {
+        this.typingUsers.add(userName);
+        this.userIdToNameMap.set(userId, userName);
+        this.updateTypingDisplay();
+
+        // Auto-clear typing indicator after 5 seconds as backup
+        setTimeout(() => {
+            this.hideTypingIndicator(userId);
+        }, 5000);
+    }
+
+    hideTypingIndicator(userId) {
+        // Get the userName from the mapping and remove it
+        const userName = this.userIdToNameMap.get(userId);
+        if (userName) {
+            this.typingUsers.delete(userName);
+            this.userIdToNameMap.delete(userId);
+            this.updateTypingDisplay();
+        }
+    }
+
+    updateTypingDisplay() {
+        const typingIndicator = document.getElementById('typingIndicator');
+        if (!typingIndicator) {
+            if (this.typingUsers.size > 0) {
+                this.createTypingIndicator();
+            }
+            return;
+        }
+
+        if (this.typingUsers.size === 0) {
+            typingIndicator.style.display = 'none';
+            return;
+        }
+
+        typingIndicator.style.display = 'block';
+        const typingArray = Array.from(this.typingUsers);
+
+        let message = '';
+        if (typingArray.length === 1) {
+            message = `${typingArray[0]} is typing`;
+        } else if (typingArray.length === 2) {
+            message = `${typingArray[0]} and ${typingArray[1]} are typing`;
+        } else {
+            message = `${typingArray.slice(0, -1).join(', ')} and ${typingArray[typingArray.length - 1]} are typing`;
+        }
+
+        typingIndicator.innerHTML = `
+        <div class="typing-message">
+            <span class="typing-text">${message}</span>
+            <div class="typing-dots">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+        </div>
+    `;
+    }
+
+    createTypingIndicator() {
+        const messagesList = document.getElementById("messagesList");
+        if (!messagesList) return;
+
+        const typingDiv = document.createElement("div");
+        typingDiv.id = "typingIndicator";
+        typingDiv.className = "typing-indicator";
+        typingDiv.style.display = 'none';
+        messagesList.appendChild(typingDiv);
+
+    }
+
+    async sendTypingNotification() {
+        if (!this.connection || this.isTyping) return;
+
+        this.isTyping = true;
+
+        try {
+            if (this.pageType === 'private' && this.receiverId) {
+                await this.connection.invoke("SendTypingNotification", this.receiverId, true, null);
+            } else if (this.pageType === 'group') {
+                await this.connection.invoke("SendTypingNotification", null, false, this.currentRoom);
+            }
+        } catch (err) {
+            console.error('Error sending typing notification:', err);
+        }
+    }
+
+    async sendStopTypingNotification() {
+        if (!this.connection || !this.isTyping) return;
+
+        this.isTyping = false;
+
+        try {
+            if (this.pageType === 'private' && this.receiverId) {
+                await this.connection.invoke("SendStopTypingNotification", this.receiverId, true, null);
+            } else if (this.pageType === 'group') {
+                await this.connection.invoke("SendStopTypingNotification", null, false, this.currentRoom);
+            }
+        } catch (err) {
+            console.error('Error sending stop typing notification:', err);
+        }
+    }
+
+    handleTyping() {
+        this.sendTypingNotification();
+
+        if (this.typingTimeout) {
+            console.log(this.typingTimeout);
+            clearTimeout(this.typingTimeout);
+        }
+
+        this.typingTimeout = setTimeout(() => {
+            console.log("stop timeout");
+            this.sendStopTypingNotification();
+        }, this.typingTimeoutDuration);
+    }
+
     handlePrivateMessage(senderId, senderName, message, time, messageId) {
+        this.hideTypingIndicator(senderId);
+
         switch (this.pageType) {
             case 'private':
                 if (senderId === this.receiverId) {
@@ -202,6 +362,8 @@ class ChatManager {
     }
 
     handleGroupMessage(sender, message, time, messageId, senderId) {
+        this.hideTypingIndicator(senderId);
+
         switch (this.pageType) {
             case 'group':
                 this.addMessageToChat(sender, message, time, sender === this.currentUserFullName, messageId);
@@ -215,6 +377,8 @@ class ChatManager {
     }
 
     handleGroupMessageNotification(sender, message, time, messageId, senderId) {
+        this.hideTypingIndicator(senderId);
+
         switch (this.pageType) {
             case 'group':
                 this.addMessageToChat(sender, message, time, sender === this.currentUserFullName, messageId);
@@ -353,6 +517,9 @@ class ChatManager {
     async sendMessage(message, isPrivate = false) {
         if (!message || !this.connection) return;
 
+        // Stop typing notification before sending message
+        this.sendStopTypingNotification();
+
         try {
             if (isPrivate && this.receiverId) {
                 await this.connection.invoke("SendPrivateMessage", this.receiverId, message);
@@ -392,9 +559,7 @@ class ChatManager {
     }
 
     async markMessagesAsReadGroup(messageId, messageType) {
-        
         if (this.connection) {
-            
             try {
                 await this.connection.invoke("MarkMessagesAsReadGroup", messageId, messageType);
             } catch (err) {
@@ -418,8 +583,6 @@ class ChatManager {
             console.error('Error marking messages as read:', err);
         }
     }
-
-
 
     async updateUnreadCount() {
         if (this.connection) {
@@ -521,13 +684,25 @@ class ChatManager {
             sendButton.addEventListener("click", () => this.handleSendMessage());
         }
 
-        // Message input
+        // Message input with typing indicators
         const messageInput = document.getElementById("messageInput");
         if (messageInput) {
             messageInput.addEventListener("keypress", (e) => {
                 if (e.key === "Enter") {
                     this.handleSendMessage();
+                } else {
+                    // Handle typing
+                    this.handleTyping();
                 }
+            });
+
+            messageInput.addEventListener("input", () => {
+                this.handleTyping();
+            });
+
+            messageInput.addEventListener("blur", () => {
+                // Send stop typing notification when input loses focus
+                this.sendStopTypingNotification();
             });
         }
 

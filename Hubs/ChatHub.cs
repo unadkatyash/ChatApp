@@ -289,5 +289,65 @@ namespace ChatApp.Hubs
         {
             Console.WriteLine($"Notification for offline user {userId}: New message from {senderName}");
         }
+
+        // Add these methods to your ChatHub class
+
+        public async Task SendTypingNotification(string receiverId = null, bool isPrivate = false, string roomId = "general")
+        {
+            var userId = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            var firstName = Context.User?.FindFirst("FirstName")?.Value;
+            var lastName = Context.User?.FindFirst("LastName")?.Value;
+
+            if (string.IsNullOrEmpty(userId)) return;
+
+            var displayName = $"{firstName} {lastName}".Trim();
+            if (string.IsNullOrEmpty(displayName))
+                displayName = Context.User?.FindFirst(ClaimTypes.Name)?.Value;
+
+            if (isPrivate && !string.IsNullOrEmpty(receiverId))
+            {
+                // Send typing notification to specific user for private chat
+                var receiverConnections = await _context.UserConnections
+                    .Where(uc => uc.UserId == receiverId && uc.IsActive)
+                    .Select(uc => uc.ConnectionId)
+                    .ToListAsync();
+
+                if (receiverConnections.Any())
+                {
+                    await Clients.Clients(receiverConnections).SendAsync("UserTyping", userId, displayName, true, receiverId);
+                }
+            }
+            else
+            {
+                // Send typing notification to group chat (exclude sender)
+                await Clients.GroupExcept(roomId, Context.ConnectionId).SendAsync("UserTyping", userId, displayName, false, null);
+            }
+        }
+
+        public async Task SendStopTypingNotification(string receiverId = null, bool isPrivate = false, string roomId = "general")
+        {
+            var userId = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+            if (string.IsNullOrEmpty(userId)) return;
+
+            if (isPrivate && !string.IsNullOrEmpty(receiverId))
+            {
+                // Send stop typing notification to specific user for private chat
+                var receiverConnections = await _context.UserConnections
+                    .Where(uc => uc.UserId == receiverId && uc.IsActive)
+                    .Select(uc => uc.ConnectionId)
+                    .ToListAsync();
+
+                if (receiverConnections.Any())
+                {
+                    await Clients.Clients(receiverConnections).SendAsync("UserStoppedTyping", userId, true, receiverId);
+                }
+            }
+            else
+            {
+                // Send stop typing notification to group chat (exclude sender)
+                await Clients.GroupExcept(roomId, Context.ConnectionId).SendAsync("UserStoppedTyping", userId, false, null);
+            }
+        }
     }
 }
