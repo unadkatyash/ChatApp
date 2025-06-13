@@ -59,7 +59,6 @@ class ChatManager {
             this.receiverId = contextElement.getAttribute('data-receiver-id');
             this.receiverName = contextElement.getAttribute('data-receiver-name');
             this.currentRoom = contextElement.getAttribute('data-room') || 'general';
-            
         }
 
         // Fallback to data attributes on other elements
@@ -126,6 +125,10 @@ class ChatManager {
             this.handleGroupMessage(sender, message, time, messageId, senderId);
         });
 
+        this.connection.on("ReceiveMessageNotification", (sender, message, time, messageId, senderId) => {
+            this.handleGroupMessageNotification(sender, message, time, messageId, senderId);
+        });
+
         // Private message sent confirmation
         this.connection.on("PrivateMessageSent", (toReceiverId, message, time, messageId) => {
             this.handlePrivateMessageSent(toReceiverId, message, time, messageId);
@@ -179,7 +182,6 @@ class ChatManager {
     }
 
     handlePrivateMessage(senderId, senderName, message, time, messageId) {
-        debugger;
         switch (this.pageType) {
             case 'private':
                 if (senderId === this.receiverId) {
@@ -200,7 +202,19 @@ class ChatManager {
     }
 
     handleGroupMessage(sender, message, time, messageId, senderId) {
-        debugger;
+        switch (this.pageType) {
+            case 'group':
+                this.addMessageToChat(sender, message, time, sender === this.currentUserFullName, messageId);
+                break;
+            default:
+                if (senderId !== this.currentUserId) {
+                    this.updateUnreadCount();
+                    this.showNotification(sender, message, true);
+                }
+        }
+    }
+
+    handleGroupMessageNotification(sender, message, time, messageId, senderId) {
         switch (this.pageType) {
             case 'group':
                 this.addMessageToChat(sender, message, time, sender === this.currentUserFullName, messageId);
@@ -420,11 +434,11 @@ class ChatManager {
     // Notification Methods
     showNotification(senderName, message, isGroup = false) {
         if ('Notification' in window && Notification.permission === 'granted') {
-            const title = isGroup ? `New message in General Chat` : `New message from ${senderName}`;
+            const title = isGroup ? `${senderName} In General Chat` : `New message from ${senderName}`;
             const options = {
                 body: message.length > 100 ? message.substring(0, 100) + '...' : message,
-                icon: '/favicon.ico',
-                badge: '/favicon.ico',
+                icon: '/images/chat_app_Logo2.png',
+                badge: '/images/chat_app_Logo2.png',
                 tag: isGroup ? 'group' : senderName
             };
 

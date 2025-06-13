@@ -6,7 +6,7 @@
     <title>@ViewData["Title"] - Chat App</title>
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
-    <link rel="icon" type="image/png" href="~/favicon.ico" />
+    <link rel="icon" type="image/png" href="~/images/chat_app_Logo2.png" />
     <style>
         .chat-container {
             height: 70vh;
@@ -150,7 +150,10 @@
     <header>
         <nav class="navbar navbar-expand-sm navbar-toggleable-sm navbar-light bg-white border-bottom box-shadow mb-3">
             <div class="container-fluid">
-                <a class="navbar-brand" asp-controller="Chat" asp-action="ChatList">💬 Chat App</a>
+                <a class="navbar-brand" asp-controller="Chat" asp-action="ChatList">
+                    <img src="~/images/chat_app_Logo2.png" alt="Chat App Logo" style="height:40px; padding-bottom:7px;" />
+                    <span> Chat App</span>
+                </a>
                 <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target=".navbar-collapse">
                     <span class="navbar-toggler-icon"></span>
                 </button>
@@ -210,11 +213,9 @@
 
     <script src="~/lib/jquery/dist/jquery.min.js"></script>
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="~/js/site.js" asp-append-version="true"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/7.0.5/signalr.min.js"></script>
-
-    <!-- Chat Common Module -->
     <script src="~/js/chat-common.js" asp-append-version="true"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/7.0.5/signalr.min.js"></script>
+    <script src="~/js/site.js" asp-append-version="true"></script>
 
     <!-- Initialize Global Chat -->
     @if (User.Identity.IsAuthenticated)

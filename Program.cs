@@ -108,6 +108,9 @@ app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Account}/{action=Login}/{id?}");
 
-app.MapHub<ChatHub>("/chatHub");
+app.UseEndpoints(endpoints =>
+{
+    _ = endpoints.MapHub<ChatHub>("/chatHub");
+});
 
 app.Run();

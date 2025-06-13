@@ -53,6 +53,14 @@ namespace ChatApp.Hubs
                 .Where(uid => uid != userId)
                 .ToListAsync();
 
+            var receiverConnections = await _context.UserConnections
+                .Where(uc => uc.IsActive)
+                .Include(uc => uc.User)
+                .Distinct()
+                .Where(uid => uid.UserId != userId)
+                .Select(uc => uc.ConnectionId)
+                .ToListAsync();
+
             foreach (var uid in usersInRoom)
             {
                 _context.MessageStatuses.Add(new MessageStatus
@@ -66,6 +74,9 @@ namespace ChatApp.Hubs
             await _context.SaveChangesAsync();
 
             await Clients.Group(roomId).SendAsync("ReceiveMessage", displayName, message,
+                chatMessage.Timestamp.ToString("HH:mm"), chatMessage.Id, userId);
+
+            await Clients.Clients(receiverConnections).SendAsync("ReceiveMessageNotification", displayName, message,
                 chatMessage.Timestamp.ToString("HH:mm"), chatMessage.Id, userId);
         }
 
